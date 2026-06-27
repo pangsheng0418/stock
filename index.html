@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>台股買賣收支及盈絀管制系統</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+            outfit: ['Outfit', 'sans-serif'],
+          },
+          boxShadow: {
+            glass: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+            'glass-hover': '0 8px 32px 0 rgba(99, 102, 241, 0.15)',
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Custom Styling -->
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(99, 102, 241, 0.4);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.6);
+    }
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .text-tw-up {
+      color: #ef4444; /* 台灣股市：漲/獲利為紅 */
+    }
+    .text-tw-down {
+      color: #10b981; /* 台灣股市：跌/虧損為綠 */
+    }
+    .bg-tw-up-light {
+      background-color: rgba(239, 68, 68, 0.1);
+    }
+    .bg-tw-down-light {
+      background-color: rgba(16, 185, 129, 0.1);
+    }
+    /* Glow Animations */
+    .glow-purple {
+      box-shadow: 0 0 20px rgba(129, 140, 248, 0.15);
+    }
+    .glow-red {
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+    }
+    .glow-green {
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 min-h-screen font-sans antialiased pb-12">
+  
+  <div id="app" class="container mx-auto px-4 py-6 max-w-7xl" v-cloak>
+    
+    <!-- 頂部 Header -->
+    <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 pb-6 border-b border-slate-800/80">
+      <div class="flex items-center gap-3">
+        <div class="bg-gradient-to-tr from-indigo-500 to-violet-600 p-2.5 rounded-xl shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid fa-chart-line text-2xl text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            台股買賣收支及盈絀管制系統
+          </h1>
+          <p class="text-xs text-slate-400 mt-0.5">符合台灣證券交易所與稅務規範 • 加權平均成本核算</p>
+        </div>
+      </div>
+      
+      <!-- 頂部按鈕區 -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <button @click="loadDemoData" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700/60 transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> 載入範例資料
+        </button>
+        <button @click="exportData" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700/60 transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-download"></i> 備份匯出
+        </button>
+        <label class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700/60 transition-all flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-upload"></i> 還原匯入
+          <input type="file" @change="importData" class="hidden" accept=".json">
+        </label>
+        <button @click="clearAllData" class="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-medium rounded-lg border border-rose-800/40 transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-trash-can"></i> 清空資料
+        </button>
+      </div>
+    </header>
+
+    <!-- Toast 訊息通知 -->
+    <div class="fixed top-6 right-6 z-50 flex flex-col gap-2">
+      <transition-group enter-active-class="transform ease-out duration-300 transition" enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2" enter-to-class="translate-y-0 opacity-100 sm:translate-x-0" leave-active-class="transition ease-in duration-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
+        <div v-for="toast in toasts" :key="toast.id" class="flex items-center gap-3 p-4 rounded-xl shadow-xl border backdrop-blur-md" :class="toast.type === 'success' ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-200' : toast.type === 'error' ? 'bg-rose-950/80 border-rose-500/30 text-rose-200' : 'bg-slate-900/90 border-slate-700 text-slate-200'">
+          <i :class="toast.type === 'success' ? 'fa-solid fa-circle-check text-emerald-400' : toast.type === 'error' ? 'fa-solid fa-circle-exclamation text-rose-400' : 'fa-solid fa-info-circle text-blue-400'"></i>
+          <span class="text-sm font-medium">{{ toast.message }}</span>
+        </div>
+      </transition-group>
+    </div>
+
+    <!-- 儀表板看板 (總資產看板) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      
+      <!-- 累積總投入成本 -->
+      <div class="glass-panel p-5 rounded-2xl shadow-glass flex flex-col justify-between relative overflow-hidden group">
+        <div class="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-indigo-500/5 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">累積總投入成本</span>
+          <span class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 text-xs"><i class="fa-solid fa-wallet"></i></span>
+        </div>
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight text-white font-outfit">
+            NT$ {{ formatMoney(dashboard.totalCost) }}
+          </h2>
+          <div class="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+            <span>庫存股數市值會隨市場波動，此為純買入累計總成本</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 累積配息收入 -->
+      <div class="glass-panel p-5 rounded-2xl shadow-glass flex flex-col justify-between relative overflow-hidden group">
+        <div class="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-blue-500/5 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">累積配息收入</span>
+          <span class="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 text-xs"><i class="fa-solid fa-hand-holding-dollar"></i></span>
+        </div>
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight text-white font-outfit">
+            NT$ {{ formatMoney(dashboard.totalDividend) }}
+          </h2>
+          <div class="text-[10px] text-slate-400 mt-1.5">
+            累計發放的現金股利總額
+          </div>
+        </div>
+      </div>
+
+      <!-- 累積已實現損益 -->
+      <div class="glass-panel p-5 rounded-2xl shadow-glass flex flex-col justify-between relative overflow-hidden group" :class="dashboard.totalRealizedProfit >= 0 ? 'glow-red' : 'glow-green'">
+        <div class="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 rounded-full group-hover:scale-125 transition-transform duration-500" :class="dashboard.totalRealizedProfit >= 0 ? 'bg-red-500/5' : 'bg-green-500/5'"></div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">累積已實現損益</span>
+          <span class="p-1.5 rounded-lg text-xs" :class="dashboard.totalRealizedProfit >= 0 ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'">
+            <i class="fa-solid fa-scale-balanced"></i>
+          </span>
+        </div>
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight font-outfit" :class="dashboard.totalRealizedProfit >= 0 ? 'text-tw-up' : 'text-tw-down'">
+            <span v-if="dashboard.totalRealizedProfit > 0">+</span>NT$ {{ formatMoney(dashboard.totalRealizedProfit) }}
+          </h2>
+          <div class="text-[10px] mt-1.5 flex items-center gap-1" :class="dashboard.totalRealizedProfit >= 0 ? 'text-rose-400/80' : 'text-emerald-400/80'">
+            <i :class="dashboard.totalRealizedProfit >= 0 ? 'fa-solid fa-caret-up' : 'fa-solid fa-caret-down'"></i>
+            <span>不含持有中未賣出持股之未實現損益</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 總淨盈絀 -->
+      <div class="glass-panel p-5 rounded-2xl shadow-glass flex flex-col justify-between relative overflow-hidden group border-l-2" :class="[dashboard.netProfit >= 0 ? 'border-l-rose-500 glow-red' : 'border-l-emerald-500 glow-green']">
+        <div class="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 rounded-full group-hover:scale-125 transition-transform duration-500" :class="dashboard.netProfit >= 0 ? 'bg-red-500/5' : 'bg-green-500/5'"></div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">總淨盈絀 (已實現+配息)</span>
+          <span class="p-1.5 rounded-lg text-xs" :class="dashboard.netProfit >= 0 ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'">
+            <i class="fa-solid fa-calculator"></i>
+          </span>
+        </div>
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight font-outfit" :class="dashboard.netProfit >= 0 ? 'text-tw-up' : 'text-tw-down'">
+            <span v-if="dashboard.netProfit > 0">+</span>NT$ {{ formatMoney(dashboard.netProfit) }}
+          </h2>
+          <div class="text-[10px] mt-1.5 flex items-center gap-1.5">
+            <span class="text-slate-400">投資報酬率約</span>
+            <span class="font-bold" :class="dashboard.netProfit >= 0 ? 'text-rose-400' : 'text-emerald-400'">
+              {{ dashboard.roi }}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 中間區段：資料輸入 & 圖表報表 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8 items-start">
+      
+      <!-- 左側：資料輸入面板 (占 5 欄) -->
+      <section class="lg:col-span-5 glass-panel p-6 rounded-2xl shadow-glass border-slate-700/50" :class="{'border-indigo-500/40 shadow-indigo-500/5': form.id}">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="fa-solid" :class="form.id ? 'fa-pen-to-square text-indigo-400' : 'fa-square-plus text-indigo-400'"></i>
+            {{ form.id ? '編輯交易紀錄' : '新增交易紀錄' }}
+          </h3>
+          <span v-if="form.id" @click="resetForm" class="text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer flex items-center gap-1">
+            <i class="fa-solid fa-xmark"></i> 取消編輯
+          </span>
+        </div>
+
+        <form @submit.prevent="saveRecord" class="space-y-4">
+          <!-- 交易類型與日期 -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1.5">交易類型</label>
+              <select v-model="form.type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                <option value="buy">買入</option>
+                <option value="sell">賣出</option>
+                <option value="dividend">配息</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1.5">交易日期</label>
+              <input type="date" v-model="form.date" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+          </div>
+
+          <!-- 股票名稱代號與快速輸入 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1.5">股票代號與名稱</label>
+            <input type="text" v-model="form.symbol" required placeholder="例如：2330 台積電" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600">
+            
+            <!-- 常用快捷 -->
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <span class="text-[10px] text-slate-500 self-center">快捷填入：</span>
+              <button type="button" v-for="stock in quickStocks" :key="stock" @click="form.symbol = stock" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700/50 transition-colors">
+                {{ stock }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 價格與張數 -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1.5">
+                {{ form.type === 'dividend' ? '每股配息 (元)' : '每股價格 (元)' }}
+              </label>
+              <input type="number" v-model.number="form.price" required min="0.01" step="0.01" placeholder="請輸入單價" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1.5">
+                張數 <span class="text-[10px] text-slate-500 font-normal">(1張=1,000股)</span>
+              </label>
+              <input type="number" v-model.number="form.shares" required min="0.001" step="0.001" placeholder="例如：1 或 0.5" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+          </div>
+
+          <!-- 券商手續費折讓 -->
+          <div v-show="form.type !== 'dividend'">
+            <label class="block text-xs font-semibold text-slate-400 mb-1.5">券商手續費折讓</label>
+            <div class="grid grid-cols-4 gap-2">
+              <button type="button" v-for="opt in discountOptions" :key="opt.value" @click="form.discount = opt.value" class="px-2 py-1.5 rounded-lg text-xs font-medium border transition-all" :class="form.discount === opt.value ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'">
+                {{ opt.label }}
+              </button>
+            </div>
+            <!-- 自訂折讓輸入 -->
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-[10px] text-slate-500">自訂折讓比率 (0~1)：</span>
+              <input type="number" v-model.number="form.discount" min="0" max="1" step="0.01" class="w-20 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+              <span class="text-[10px] text-slate-500">(例如 0.28 代表 2.8 折)</span>
+            </div>
+          </div>
+
+          <!-- 備註 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1.5">備註說明</label>
+            <textarea v-model="form.note" rows="2" placeholder="可在此紀錄交易事由，如：定期定額、除息日、波段操作..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600 resize-none"></textarea>
+          </div>
+
+          <!-- 即時計算預覽 (極佳體驗) -->
+          <div class="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2 mt-4">
+            <div class="font-semibold text-slate-400 border-b border-slate-800 pb-1.5 flex justify-between">
+              <span>試算預覽</span>
+              <span class="text-[10px] text-indigo-400 font-normal">依當前輸入即時試算</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-slate-400">
+              <div>股數：<span class="text-white font-medium">{{ formatMoney(previewValues.shares) }} 股</span></div>
+              <div v-show="form.type !== 'dividend'">原始手續費：<span class="text-white font-medium">NT$ {{ formatMoney(previewValues.rawFee) }}</span></div>
+              <div v-show="form.type !== 'dividend'">折讓後手續費：<span class="text-white font-medium">NT$ {{ formatMoney(previewValues.fee) }}</span></div>
+              <div v-show="form.type === 'sell'">預估證交稅 (0.3%)：<span class="text-white font-medium">NT$ {{ formatMoney(previewValues.tax) }}</span></div>
+            </div>
+            <div class="border-t border-slate-800 pt-1.5 flex justify-between items-center text-sm font-semibold">
+              <span class="text-slate-300">{{ previewValues.totalLabel }}</span>
+              <span class="text-white">NT$ {{ formatMoney(previewValues.totalAmount) }}</span>
+            </div>
+          </div>
+
+          <!-- 送出按鈕 -->
+          <button type="submit" class="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-semibold rounded-xl text-sm transition-all duration-300 shadow-lg shadow-indigo-500/20 hover:scale-[1.01] flex items-center justify-center gap-2">
+            <i class="fa-solid fa-circle-check"></i>
+            {{ form.id ? '儲存修改' : '送出交易紀錄' }}
+          </button>
+        </form>
+      </section>
+
+      <!-- 右側：視覺化圖表與報表系統 (占 7 欄) -->
+      <section class="lg:col-span-7 space-y-6">
+        
+        <!-- 報表切換與統計面板 -->
+        <div class="glass-panel p-6 rounded-2xl shadow-glass border-slate-700/50">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-simple text-indigo-400"></i>
+                盈絀報表與圖表
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">以月份或年度為單位統計的已實現損益及配息</p>
+            </div>
+            <!-- 切換按鈕 -->
+            <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-850">
+              <button @click="reportType = 'monthly'" class="px-4 py-1.5 text-xs font-semibold rounded-lg transition-all" :class="reportType === 'monthly' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'">
+                每月報表
+              </button>
+              <button @click="reportType = 'yearly'" class="px-4 py-1.5 text-xs font-semibold rounded-lg transition-all" :class="reportType === 'yearly' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'">
+                每年報表
+              </button>
+            </div>
+          </div>
+
+          <!-- 圖表區 -->
+          <div class="relative w-full h-[220px] mb-6 bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
+            <canvas id="profitChart"></canvas>
+          </div>
+
+          <!-- 報表分組數據表格 -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <th class="py-2.5 px-3">{{ reportType === 'monthly' ? '月份' : '年度' }}</th>
+                  <th class="py-2.5 px-3 text-right">總買入金額</th>
+                  <th class="py-2.5 px-3 text-right">總賣出金額</th>
+                  <th class="py-2.5 px-3 text-right">總配息收入</th>
+                  <th class="py-2.5 px-3 text-right">淨盈絀 (損益)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/50">
+                <tr v-for="row in reportData" :key="row.period" class="hover:bg-slate-850/40 transition-colors">
+                  <td class="py-3 px-3 font-semibold text-slate-200">{{ row.period }}</td>
+                  <td class="py-3 px-3 text-right text-slate-400">NT$ {{ formatMoney(row.buy) }}</td>
+                  <td class="py-3 px-3 text-right text-slate-400">NT$ {{ formatMoney(row.sell) }}</td>
+                  <td class="py-3 px-3 text-right text-slate-400">NT$ {{ formatMoney(row.dividend) }}</td>
+                  <td class="py-3 px-3 text-right font-bold" :class="row.profit >= 0 ? 'text-tw-up' : 'text-tw-down'">
+                    <span v-if="row.profit > 0">+</span>NT$ {{ formatMoney(row.profit) }}
+                  </td>
+                </tr>
+                <tr v-if="reportData.length === 0">
+                  <td colspan="5" class="py-6 text-center text-slate-500">暫無統計資料，請先新增交易紀錄。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 下方：歷史交易紀錄列表 -->
+    <section class="glass-panel p-6 rounded-2xl shadow-glass border-slate-700/50">
+      
+      <!-- 篩選、搜尋、操作區 -->
+      <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
+        <div>
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-list-check text-indigo-400"></i>
+            歷史交易紀錄
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">所有已登錄的交易紀錄，採用加權平均計算盈絀與即時庫存</p>
+        </div>
+        
+        <!-- 搜尋與篩選控制項 -->
+        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+          <!-- 搜尋框 -->
+          <div class="relative flex-1 sm:w-60">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
+              <i class="fa-solid fa-magnifying-glass text-xs"></i>
+            </span>
+            <input type="text" v-model="searchQuery" placeholder="搜尋股票代號或名稱" class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600">
+          </div>
+          <!-- 篩選下拉選單 -->
+          <select v-model="filterType" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors">
+            <option value="all">全部類型</option>
+            <option value="buy">買入</option>
+            <option value="sell">賣出</option>
+            <option value="dividend">配息</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 交易紀錄 Table -->
+      <div class="overflow-x-auto -mx-6 px-6">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+              <th class="py-3 px-3">日期</th>
+              <th class="py-3 px-3">股票代號名稱</th>
+              <th class="py-3 px-3">類型</th>
+              <th class="py-3 px-3 text-right">每股單價/配息</th>
+              <th class="py-3 px-3 text-right">張數 (股數)</th>
+              <th class="py-3 px-3 text-right">手續費</th>
+              <th class="py-3 px-3 text-right">證交稅</th>
+              <th class="py-3 px-3 text-right">收支總額</th>
+              <th class="py-3 px-3 text-right">單筆損益 (盈絀)</th>
+              <th class="py-3 px-3">備註</th>
+              <th class="py-3 px-3 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/40">
+            <tr v-for="record in paginatedRecords" :key="record.id" class="hover:bg-slate-850/30 transition-colors">
+              <td class="py-3.5 px-3 text-slate-300 font-outfit whitespace-nowrap">{{ record.date }}</td>
+              <td class="py-3.5 px-3 font-semibold text-white whitespace-nowrap">
+                {{ record.symbol }}
+              </td>
+              <td class="py-3.5 px-3 whitespace-nowrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold" :class="getTypeBadgeClass(record.type)">
+                  {{ getTypeText(record.type) }}
+                </span>
+              </td>
+              <td class="py-3.5 px-3 text-right font-medium text-slate-200 font-outfit">
+                NT$ {{ formatMoney(record.price) }}
+              </td>
+              <td class="py-3.5 px-3 text-right text-slate-300 font-outfit whitespace-nowrap">
+                {{ record.shares }} 張 <span class="text-[10px] text-slate-500">({{ formatMoney(record.shares * 1000) }} 股)</span>
+              </td>
+              <td class="py-3.5 px-3 text-right text-slate-400 font-outfit">
+                {{ record.type === 'dividend' ? '-' : 'NT$ ' + formatMoney(record.fee) }}
+              </td>
+              <td class="py-3.5 px-3 text-right text-slate-400 font-outfit">
+                {{ record.type === 'sell' ? 'NT$ ' + formatMoney(record.tax) : '-' }}
+              </td>
+              <td class="py-3.5 px-3 text-right text-white font-semibold font-outfit">
+                NT$ {{ formatMoney(record.totalAmount) }}
+              </td>
+              <!-- 損益 -->
+              <td class="py-3.5 px-3 text-right font-bold font-outfit whitespace-nowrap">
+                <span v-if="record.type === 'buy'" class="text-slate-500 font-normal">-</span>
+                <span v-else :class="record.profit >= 0 ? 'text-tw-up' : 'text-tw-down'">
+                  <span v-if="record.profit > 0">+</span>NT$ {{ formatMoney(record.profit) }}
+                </span>
+              </td>
+              <!-- 備註 -->
+              <td class="py-3.5 px-3 text-slate-400 max-w-[150px] truncate" :title="record.note">
+                {{ record.note || '-' }}
+              </td>
+              <!-- 操作按鈕 -->
+              <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                <div class="flex items-center justify-center gap-2">
+                  <button @click="editRecord(record)" class="p-1 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-all" title="編輯">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                  </button>
+                  <button @click="deleteRecord(record.id)" class="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-all" title="刪除">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="filteredRecords.length === 0">
+              <td colspan="11" class="py-8 text-center text-slate-500">沒有符合搜尋與篩選條件的交易紀錄。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 分頁與數量統計 -->
+      <div v-if="filteredRecords.length > 0" class="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6 pt-4 border-t border-slate-800/60">
+        <span class="text-xs text-slate-400">
+          顯示第 {{ (currentPage - 1) * pageSize + 1 }} 到 {{ Math.min(currentPage * pageSize, filteredRecords.length) }} 筆，共 {{ filteredRecords.length }} 筆紀錄
+        </span>
+        <div class="flex items-center gap-1.5">
+          <button @click="currentPage = 1" :disabled="currentPage === 1" class="px-2 py-1 bg-slate-800 text-slate-400 rounded hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 transition-colors">
+            <i class="fa-solid fa-angles-left text-[10px]"></i>
+          </button>
+          <button @click="currentPage--" :disabled="currentPage === 1" class="px-2 py-1 bg-slate-800 text-slate-400 rounded hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 transition-colors">
+            <i class="fa-solid fa-angle-left text-[10px]"></i>
+          </button>
+          <span class="px-3 py-1 text-xs text-slate-300 font-semibold bg-slate-900 border border-slate-800 rounded">
+            {{ currentPage }} / {{ totalPages }}
+          </span>
+          <button @click="currentPage++" :disabled="currentPage === totalPages" class="px-2 py-1 bg-slate-800 text-slate-400 rounded hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 transition-colors">
+            <i class="fa-solid fa-angle-right text-[10px]"></i>
+          </button>
+          <button @click="currentPage = totalPages" :disabled="currentPage === totalPages" class="px-2 py-1 bg-slate-800 text-slate-400 rounded hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 transition-colors">
+            <i class="fa-solid fa-angles-right text-[10px]"></i>
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- Vue 3 App Scripts -->
+  <script>
+    const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        // --- 狀態變數 ---
+        const records = ref([]);
+        const toasts = ref([]);
+        const reportType = ref('monthly');
+        const searchQuery = ref('');
+        const filterType = ref('all');
+        const currentPage = ref(1);
+        const pageSize = ref(10);
+        
+        // 快捷股票
+        const quickStocks = ['2330 台積電', '2454 聯發科', '2317 鴻海', '0050 元大台灣50', '0056 元大高股息'];
+        
+        // 折讓選項
+        const discountOptions = [
+          { label: '無折讓', value: 1.0 },
+          { label: '6 折', value: 0.6 },
+          { label: '2.8 折', value: 0.28 },
+          { label: '1 折', value: 0.1 }
+        ];
+
+        // 表單綁定
+        const form = ref({
+          id: null,
+          date: new Date().toISOString().substring(0, 10),
+          type: 'buy',
+          symbol: '',
+          price: null,
+          shares: 1,
+          discount: 0.6,
+          note: ''
+        });
+
+        let chartInstance = null;
+
+        // --- Toast 提醒功能 ---
+        const showToast = (message, type = 'success') => {
+          const id = Date.now();
+          toasts.value.push({ id, message, type });
+          setTimeout(() => {
+            toasts.value = toasts.value.filter(t => t.id !== id);
+          }, 3000);
+        };
+
+        // --- 計算單筆交易衍生數值之函數 (配合 Form 預覽與儲存) ---
+        const calculateRecordFields = (type, price, sharesVal, discount) => {
+          const shares = (sharesVal || 0) * 1000;
+          const p = price || 0;
+          
+          let fee = 0;
+          if (type === 'buy' || type === 'sell') {
+            const rawFee = p * shares * 0.001425;
+            fee = Math.max(20, Math.ceil(rawFee * discount));
+          }
+          
+          let tax = 0;
+          if (type === 'sell') {
+            tax = Math.floor(p * shares * 0.003);
+          }
+          
+          let totalAmount = 0;
+          if (type === 'buy') {
+            totalAmount = (p * shares) + fee;
+          } else if (type === 'sell') {
+            totalAmount = (p * shares) - fee - tax;
+          } else if (type === 'dividend') {
+            totalAmount = p * shares;
+          }
+          
+          return { sharesCount: shares, fee, tax, totalAmount };
+        };
+
+        // 表單即時試算預覽
+        const previewValues = computed(() => {
+          const res = calculateRecordFields(form.value.type, form.value.price, form.value.shares, form.value.discount);
+          let totalLabel = '預估總支出';
+          if (form.value.type === 'sell') {
+            totalLabel = '預估總收入';
+          } else if (form.value.type === 'dividend') {
+            totalLabel = '預估配息收入';
+          }
+          return {
+            shares: res.sharesCount,
+            rawFee: (form.value.price || 0) * res.sharesCount * 0.001425,
+            fee: res.fee,
+            tax: res.tax,
+            totalAmount: res.totalAmount,
+            totalLabel
+          };
+        });
+
+        // --- 核心計算邏輯：重算所有交易記錄與盈絀庫存 (加權平均成本法) ---
+        const processedRecords = computed(() => {
+          // 對交易記錄依日期與類型進行排序，確保相同日期的「買入」排在「賣出」前
+          // 排序：日期 ASC -> 買入(buy)優先 -> 配息(dividend)優先 -> 賣出(sell)
+          const sorted = [...records.value].sort((a, b) => {
+            if (a.date !== b.date) {
+              return a.date.localeCompare(b.date);
+            }
+            const typeOrder = { buy: 1, dividend: 2, sell: 3 };
+            return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+          });
+
+          // 標準化股票鍵值，便於在空格不一致時（例如: 2330台積電 與 2330 台積電）正確比對
+          const getStockKey = (sym) => {
+            if (!sym) return '';
+            const normalized = sym.replace(/\s+/g, '').toUpperCase();
+            // 優先提取前 4-6 位數字代號
+            const match = normalized.match(/^(\d{4,6})/);
+            return match ? match[1] : normalized;
+          };
+
+          const inventory = {}; // 保存每檔股票的 { shares: 0, totalCost: 0 }
+          const results = [];
+
+          for (const rec of sorted) {
+            const symbol = rec.symbol.trim();
+            const stockKey = getStockKey(symbol);
+            const { sharesCount, fee, tax, totalAmount } = calculateRecordFields(rec.type, rec.price, rec.shares, rec.discount);
+            
+            let profit = 0;
+            let currentAvgCost = 0;
+
+            if (rec.type === 'buy') {
+              if (!inventory[stockKey]) {
+                inventory[stockKey] = { shares: 0, totalCost: 0 };
+              }
+              inventory[stockKey].shares += sharesCount;
+              inventory[stockKey].totalCost += totalAmount;
+              currentAvgCost = inventory[stockKey].shares > 0 ? (inventory[stockKey].totalCost / inventory[stockKey].shares) : 0;
+              profit = 0; // 買入時無已實現損益
+            } else if (rec.type === 'dividend') {
+              // 配息直接認列盈絀，不調整庫存成本
+              profit = totalAmount;
+              currentAvgCost = inventory[stockKey] && inventory[stockKey].shares > 0 ? (inventory[stockKey].totalCost / inventory[stockKey].shares) : 0;
+            } else if (rec.type === 'sell') {
+              if (!inventory[stockKey]) {
+                inventory[stockKey] = { shares: 0, totalCost: 0 };
+              }
+              const inv = inventory[stockKey];
+              const avgCost = inv.shares > 0 ? (inv.totalCost / inv.shares) : 0;
+              currentAvgCost = avgCost;
+
+              const coveredShares = Math.min(inv.shares, sharesCount);
+              let costOfSold = avgCost * coveredShares;
+
+              // 超出庫存防禦
+              if (sharesCount > inv.shares) {
+                const excess = sharesCount - inv.shares;
+                costOfSold += (rec.price * excess); // 超出股數成本以賣價計算
+              }
+
+              profit = totalAmount - costOfSold;
+
+              // 更新庫存
+              inv.shares = Math.max(0, inv.shares - sharesCount);
+              inv.totalCost = Math.max(0, inv.totalCost - costOfSold);
+            }
+
+            results.push({
+              ...rec,
+              fee,
+              tax,
+              totalAmount,
+              profit: Math.round(profit) // 四捨五入到整數
+            });
+          }
+
+          // 列表呈現通常希望以日期降序(最新日期在最上)，故將其反轉
+          return results.reverse();
+        });
+
+        // 搜尋與篩選後的紀錄
+        const filteredRecords = computed(() => {
+          let list = processedRecords.value;
+          
+          if (searchQuery.value.trim()) {
+            const query = searchQuery.value.trim().toLowerCase();
+            list = list.filter(r => r.symbol.toLowerCase().includes(query));
+          }
+
+          if (filterType.value !== 'all') {
+            list = list.filter(r => r.type === filterType.value);
+          }
+
+          return list;
+        });
+
+        // 分頁後的歷史交易
+        const totalPages = computed(() => Math.ceil(filteredRecords.value.length / pageSize.value) || 1);
+        
+        const paginatedRecords = computed(() => {
+          const start = (currentPage.value - 1) * pageSize.value;
+          const end = start + pageSize.value;
+          return filteredRecords.value.slice(start, end);
+        });
+
+        // 當篩選條件或搜尋改變時，重設分頁至第一頁
+        watch([searchQuery, filterType], () => {
+          currentPage.value = 1;
+        });
+
+        // --- 儀表板看板指標計算 ---
+        const dashboard = computed(() => {
+          let totalCost = 0;
+          let totalRealizedProfit = 0;
+          let totalDividend = 0;
+
+          // 使用正序(sorted)累計投入成本，注意以實際發生的買入為主
+          records.value.forEach(rec => {
+            const { fee, totalAmount } = calculateRecordFields(rec.type, rec.price, rec.shares, rec.discount);
+            if (rec.type === 'buy') {
+              totalCost += totalAmount;
+            }
+          });
+
+          // 從重算後的 processedRecords 加總已實現損益與配息
+          processedRecords.value.forEach(rec => {
+            if (rec.type === 'sell') {
+              totalRealizedProfit += rec.profit;
+            } else if (rec.type === 'dividend') {
+              totalDividend += rec.profit;
+            }
+          });
+
+          const netProfit = totalRealizedProfit + totalDividend;
+          const roi = totalCost > 0 ? ((netProfit / totalCost) * 100).toFixed(2) : '0.00';
+
+          return {
+            totalCost,
+            totalRealizedProfit,
+            totalDividend,
+            netProfit,
+            roi
+          };
+        });
+
+        // --- 每月 / 每年報表統計數據 ---
+        const reportData = computed(() => {
+          const groups = {};
+
+          // 使用排序好的交易記錄（由舊到新），方便圖表順序正確呈現
+          const sorted = [...processedRecords.value].reverse();
+
+          sorted.forEach(rec => {
+            let period = '';
+            if (reportType.value === 'monthly') {
+              period = rec.date.substring(0, 7); // 格式: YYYY-MM
+            } else {
+              period = rec.date.substring(0, 4) + '年'; // 格式: YYYY年
+            }
+
+            if (!groups[period]) {
+              groups[period] = { period, buy: 0, sell: 0, dividend: 0, profit: 0 };
+            }
+
+            if (rec.type === 'buy') {
+              groups[period].buy += rec.totalAmount;
+            } else if (rec.type === 'sell') {
+              groups[period].sell += rec.totalAmount;
+              groups[period].profit += rec.profit;
+            } else if (rec.type === 'dividend') {
+              groups[period].dividend += rec.totalAmount;
+              groups[period].profit += rec.profit; // 配息加算進盈絀
+            }
+          });
+
+          return Object.values(groups);
+        });
+
+        // 監聽報表類型與統計數據改變，用以更新 Chart.js
+        watch([reportData, reportType], () => {
+          nextTick(() => {
+            updateChart();
+          });
+        });
+
+        // --- Chart.js 畫圖邏輯 ---
+        const updateChart = () => {
+          const ctx = document.getElementById('profitChart');
+          if (!ctx) return;
+
+          // 銷毀舊圖表
+          if (chartInstance) {
+            chartInstance.destroy();
+          }
+
+          const dataList = reportData.value;
+          const labels = dataList.map(d => d.period);
+          const profits = dataList.map(d => d.profit);
+
+          // 獲利為紅（台股），虧損為綠
+          const backgroundColors = profits.map(val => 
+            val >= 0 ? 'rgba(239, 68, 68, 0.75)' : 'rgba(16, 185, 129, 0.75)'
+          );
+          const borderColors = profits.map(val => 
+            val >= 0 ? '#ef4444' : '#10b981'
+          );
+
+          chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: '淨盈絀 (NT$)',
+                data: profits,
+                backgroundColor: backgroundColors,
+                borderColor: borderColors,
+                borderWidth: 1.5,
+                borderRadius: 6,
+                barPercentage: 0.6
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: false
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  titleColor: '#fff',
+                  bodyColor: '#cbd5e1',
+                  borderColor: 'rgba(255,255,255,0.1)',
+                  borderWidth: 1,
+                  callbacks: {
+                    label: function(context) {
+                      const val = context.raw;
+                      const prefix = val >= 0 ? '+' : '';
+                      return ` 淨盈絀: ${prefix}${val.toLocaleString()} 元`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  grid: {
+                    color: 'rgba(255, 255, 255, 0.04)'
+                  },
+                  ticks: {
+                    color: '#94a3b8',
+                    font: {
+                      size: 10,
+                      family: 'Inter, Noto Sans TC'
+                    }
+                  }
+                },
+                y: {
+                  grid: {
+                    color: 'rgba(255, 255, 255, 0.06)'
+                  },
+                  ticks: {
+                    color: '#94a3b8',
+                    font: {
+                      size: 10,
+                      family: 'Outfit'
+                    },
+                    callback: function(value) {
+                      return (value >= 0 ? '+' : '') + value.toLocaleString();
+                    }
+                  }
+                }
+              }
+            }
+          });
+        };
+
+        // --- 交易表單操作 ---
+        const saveRecord = () => {
+          if (!form.value.symbol.trim() || !form.value.price || !form.value.shares) {
+            showToast('請完整填寫交易欄位', 'error');
+            return;
+          }
+
+          if (form.value.id) {
+            // 編輯模式
+            const index = records.value.findIndex(r => r.id === form.value.id);
+            if (index !== -1) {
+              records.value[index] = {
+                ...records.value[index],
+                date: form.value.date,
+                type: form.value.type,
+                symbol: form.value.symbol.trim(),
+                price: parseFloat(form.value.price),
+                shares: parseFloat(form.value.shares),
+                discount: parseFloat(form.value.discount),
+                note: form.value.note.trim()
+              };
+              showToast('交易紀錄已成功修改');
+            }
+          } else {
+            // 新增模式
+            const newRecord = {
+              id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+              date: form.value.date,
+              type: form.value.type,
+              symbol: form.value.symbol.trim(),
+              price: parseFloat(form.value.price),
+              shares: parseFloat(form.value.shares),
+              discount: parseFloat(form.value.discount),
+              note: form.value.note.trim()
+            };
+            records.value.push(newRecord);
+            showToast('已成功新增一筆交易紀錄');
+          }
+
+          resetForm();
+          saveToLocalStorage();
+        };
+
+        const editRecord = (record) => {
+          form.value = {
+            id: record.id,
+            date: record.date,
+            type: record.type,
+            symbol: record.symbol,
+            price: record.price,
+            shares: record.shares,
+            discount: record.discount,
+            note: record.note || ''
+          };
+          // 滾動到表單頂部方便編輯
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        const deleteRecord = (id) => {
+          if (confirm('確定要刪除此筆交易紀錄嗎？這將會影響後續加權成本計算。')) {
+            records.value = records.value.filter(r => r.id !== id);
+            showToast('已刪除該筆交易紀錄', 'info');
+            saveToLocalStorage();
+            
+            // 避免刪除後分頁溢出
+            if (currentPage.value > totalPages.value) {
+              currentPage.value = totalPages.value;
+            }
+          }
+        };
+
+        const resetForm = () => {
+          form.value = {
+            id: null,
+            date: new Date().toISOString().substring(0, 10),
+            type: 'buy',
+            symbol: '',
+            price: null,
+            shares: 1,
+            discount: 0.6,
+            note: ''
+          };
+        };
+
+        // --- 資料備份與本地儲存 ---
+        const saveToLocalStorage = () => {
+          localStorage.setItem('tw_stock_control_records', JSON.stringify(records.value));
+        };
+
+        const loadFromLocalStorage = () => {
+          const data = localStorage.getItem('tw_stock_control_records');
+          if (data) {
+            try {
+              records.value = JSON.parse(data);
+            } catch (e) {
+              showToast('本地快取資料讀取失敗，已初始化為空陣列', 'error');
+              records.value = [];
+            }
+          }
+        };
+
+        const clearAllData = () => {
+          if (confirm('警告：確定要清空所有的交易紀錄嗎？此動作無法復原！')) {
+            records.value = [];
+            saveToLocalStorage();
+            resetForm();
+            showToast('已清空所有交易紀錄', 'info');
+          }
+        };
+
+        const exportData = () => {
+          const dataStr = JSON.stringify(records.value, null, 2);
+          const blob = new Blob([dataStr], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `台股盈絀管制系統備份_${new Date().toISOString().substring(0, 10)}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast('備份檔案已成功下載');
+        };
+
+        const importData = (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const imported = JSON.parse(e.target.result);
+              if (Array.isArray(imported)) {
+                // 基礎結構驗證
+                const isValid = imported.every(r => r.date && r.type && r.symbol && typeof r.price === 'number' && typeof r.shares === 'number');
+                if (isValid) {
+                  records.value = imported;
+                  saveToLocalStorage();
+                  showToast('資料還原匯入成功！');
+                  currentPage.value = 1;
+                } else {
+                  showToast('檔案內容格式不正確，匯入失敗', 'error');
+                }
+              } else {
+                showToast('匯入失敗：非交易紀錄陣列格式', 'error');
+              }
+            } catch (err) {
+              showToast('解析 JSON 檔案失敗，請確認檔案格式', 'error');
+            }
+          };
+          reader.readAsText(file);
+          // 清空 input 讓同一個檔案可以重複選取
+          event.target.value = '';
+        };
+
+        // --- 載入範例資料 ---
+        const loadDemoData = () => {
+          if (records.value.length > 0 && !confirm('載入範例資料將會覆蓋您目前的交易紀錄，是否確定？')) {
+            return;
+          }
+
+          const demo = [
+            {
+              id: 'demo_1',
+              date: '2025-10-15',
+              type: 'buy',
+              symbol: '2330 台積電',
+              price: 900.0,
+              shares: 1.0,
+              discount: 0.6,
+              note: '建倉台積電'
+            },
+            {
+              id: 'demo_2',
+              date: '2025-11-20',
+              type: 'buy',
+              symbol: '2330 台積電',
+              price: 950.0,
+              shares: 0.5,
+              discount: 0.6,
+              note: '零股逢低加碼'
+            },
+            {
+              id: 'demo_3',
+              date: '2026-01-05',
+              type: 'sell',
+              symbol: '2330 台積電',
+              price: 1020.0,
+              shares: 1.0,
+              discount: 0.6,
+              note: '獲利調節 1 張'
+            },
+            {
+              id: 'demo_4',
+              date: '2026-03-25',
+              type: 'buy',
+              symbol: '2454 聯發科',
+              price: 1200.0,
+              shares: 2.0,
+              discount: 0.28,
+              note: '看好IC設計龍頭，買入2張'
+            },
+            {
+              id: 'demo_5',
+              date: '2026-04-10',
+              type: 'dividend',
+              symbol: '2330 台積電',
+              price: 4.0,
+              shares: 0.5,
+              discount: 1.0,
+              note: '台積電季度配息 (剩餘庫存0.5張)'
+            },
+            {
+              id: 'demo_6',
+              date: '2026-05-15',
+              type: 'sell',
+              symbol: '2454 聯發科',
+              price: 1300.0,
+              shares: 1.0,
+              discount: 0.28,
+              note: '除息前提早獲利了結 1 張'
+            },
+            {
+              id: 'demo_7',
+              date: '2026-06-20',
+              type: 'dividend',
+              symbol: '2454 聯發科',
+              price: 15.0,
+              shares: 1.0,
+              discount: 1.0,
+              note: '聯發科配息 (剩餘庫存1.0張)'
+            }
+          ];
+
+          records.value = demo;
+          saveToLocalStorage();
+          showToast('範例資料載入成功，已重算盈絀！');
+          currentPage.value = 1;
+        };
+
+        // --- 輔術格式化函數 ---
+        const formatMoney = (val) => {
+          if (val === undefined || val === null || isNaN(val)) return '0';
+          return Math.round(val).toLocaleString('zh-TW');
+        };
+
+        const getTypeText = (type) => {
+          const mapping = { buy: '買入', sell: '賣出', dividend: '配息' };
+          return mapping[type] || type;
+        };
+
+        const getTypeBadgeClass = (type) => {
+          if (type === 'buy') return 'bg-indigo-650/40 text-indigo-300 border border-indigo-500/20';
+          if (type === 'sell') return 'bg-amber-600/30 text-amber-300 border border-amber-500/20';
+          if (type === 'dividend') return 'bg-sky-600/30 text-sky-300 border border-sky-500/20';
+          return 'bg-slate-700 text-slate-300';
+        };
+
+        // --- Lifecycle Hooks ---
+        onMounted(() => {
+          loadFromLocalStorage();
+          // 如果沒有資料，先預設載入範例資料，提供優良的第一眼視覺體驗
+          if (records.value.length === 0) {
+            loadDemoData();
+          } else {
+            nextTick(() => {
+              updateChart();
+            });
+          }
+        });
+
+        return {
+          records,
+          toasts,
+          reportType,
+          searchQuery,
+          filterType,
+          currentPage,
+          pageSize,
+          quickStocks,
+          discountOptions,
+          form,
+          previewValues,
+          processedRecords,
+          filteredRecords,
+          totalPages,
+          paginatedRecords,
+          dashboard,
+          reportData,
+          saveRecord,
+          editRecord,
+          deleteRecord,
+          resetForm,
+          clearAllData,
+          exportData,
+          importData,
+          loadDemoData,
+          formatMoney,
+          getTypeText,
+          getTypeBadgeClass
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
