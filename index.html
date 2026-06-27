@@ -16,6 +16,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Vue 3 CDN -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- SheetJS CDN for Excel Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Tailwind Configuration -->
   <script>
     tailwind.config = {
@@ -247,13 +249,32 @@
           <div>
             <label class="block text-xs font-semibold text-slate-400 mb-1.5">股票代號與名稱</label>
             <input type="text" v-model="form.symbol" required placeholder="例如：2330 台積電" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600">
+            <p v-if="symbolError" class="text-rose-400 text-[10px] mt-1 flex items-center gap-1">
+              <i class="fa-solid fa-circle-exclamation"></i> {{ symbolError }}
+            </p>
             
-            <!-- 常用快捷 -->
-            <div class="flex flex-wrap gap-1.5 mt-2">
+            <!-- 常用快捷 (非賣出時顯示) -->
+            <div v-show="form.type !== 'sell'" class="flex flex-wrap gap-1.5 mt-2">
               <span class="text-[10px] text-slate-500 self-center">快捷填入：</span>
               <button type="button" v-for="stock in quickStocks" :key="stock" @click="form.symbol = stock" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700/50 transition-colors">
                 {{ stock }}
               </button>
+            </div>
+
+            <!-- 當前持股庫存快速選取 (僅在賣出時顯示，供選取核對，防範超賣) -->
+            <div v-show="form.type === 'sell'" class="mt-2.5 p-2 rounded bg-slate-900/60 border border-slate-800/80">
+              <span class="text-[10px] text-slate-400 block mb-1">
+                <i class="fa-solid fa-boxes-stacked text-indigo-400 mr-1"></i> 選擇可用庫存持股：
+              </span>
+              <div class="flex flex-wrap gap-1.5" v-if="currentInventory.length > 0">
+                <button type="button" v-for="inv in currentInventory" :key="inv.symbol" @click="form.symbol = inv.symbol; form.shares = inv.shares" class="text-[10px] px-2.5 py-1 bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 rounded border border-indigo-800/30 transition-all flex items-center gap-1">
+                  <span class="font-medium">{{ inv.symbol }}</span>
+                  <span class="text-[9px] px-1 bg-indigo-900/80 text-indigo-200 rounded-sm">剩 {{ inv.shares }} 張</span>
+                </button>
+              </div>
+              <div class="text-[10px] text-rose-400 flex items-center gap-1.5" v-else>
+                <i class="fa-solid fa-triangle-exclamation"></i> 目前無可用持股，無法進行賣出交易
+              </div>
             </div>
           </div>
 
@@ -526,6 +547,63 @@
         // --- 狀態變數 ---
         const records = ref([]);
         const toasts = ref([]);
+        const symbolError = ref('');
+
+        // 股票格式驗證正則：開頭 4-6 碼英數字，中間空格，後面是股票名稱
+        const isValidSymbolFormat = (sym) => {
+          return /^[A-Za-z0-9]{4,6}\s+\S+/.test(sym.trim());
+        };
+
+        const validateSymbolInput = () => {
+          if (!form.value.symbol.trim()) {
+            symbolError.value = '請輸入股票代號與名稱';
+          } else if (!isValidSymbolFormat(form.value.symbol)) {
+            symbolError.value = '格式須為「代號 名稱」，例如：2330 台積電';
+          } else {
+            symbolError.value = '';
+          }
+        };
+
+        // 模擬全部交易，以驗證是否有任何時間點會產生「超賣」（庫存股數小於 0）
+        const checkInventoryLegitimacy = (recordsList) => {
+          // 對交易記錄依日期與類型進行排序（依時間先後）
+          const sorted = [...recordsList].sort((a, b) => {
+            if (a.date !== b.date) {
+              return a.date.localeCompare(b.date);
+            }
+            const typeOrder = { buy: 1, dividend: 2, sell: 3 };
+            return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+          });
+
+          const getStockKey = (sym) => {
+            if (!sym) return '';
+            const normalized = sym.replace(/\s+/g, '').toUpperCase();
+            const match = normalized.match(/^(\d{4,6})/);
+            return match ? match[1] : normalized;
+          };
+
+          const inventory = {}; // 記錄各股票在當前時間點的股數
+
+          for (const rec of sorted) {
+            const symbol = rec.symbol.trim();
+            const stockKey = getStockKey(symbol);
+            const sharesCount = (rec.shares || 0) * 1000;
+
+            if (rec.type === 'buy') {
+              inventory[stockKey] = (inventory[stockKey] || 0) + sharesCount;
+            } else if (rec.type === 'sell') {
+              const currentShares = inventory[stockKey] || 0;
+              if (sharesCount > currentShares) {
+                return {
+                  valid: false,
+                  message: `交易日期 ${rec.date}：股票「${symbol}」可用庫存不足。當前累積庫存為 ${currentShares / 1000} 張 (${currentShares} 股)，無法賣出 ${rec.shares} 張 (${sharesCount} 股)。`
+                };
+              }
+              inventory[stockKey] = currentShares - sharesCount;
+            }
+          }
+          return { valid: true };
+        };
         const reportType = ref('monthly');
         const searchQuery = ref('');
         const filterType = ref('all');
@@ -551,7 +629,7 @@
           symbol: '',
           price: null,
           shares: 1,
-          discount: 0.6,
+          discount: 1.0,
           note: ''
         });
 
@@ -710,6 +788,47 @@
           return list;
         });
 
+        // 計算當前每檔股票的實際累積剩餘庫存張數 (以股數計算再換算成張數，過濾掉 0 張)
+        const currentInventory = computed(() => {
+          // 對交易記錄依日期與類型進行正序排序
+          const sorted = [...records.value].sort((a, b) => {
+            if (a.date !== b.date) {
+              return a.date.localeCompare(b.date);
+            }
+            const typeOrder = { buy: 1, dividend: 2, sell: 3 };
+            return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+          });
+
+          const getStockKey = (sym) => {
+            if (!sym) return '';
+            return sym.trim();
+          };
+
+          const invMap = {};
+
+          for (const rec of sorted) {
+            const symbol = getStockKey(rec.symbol);
+            const sharesCount = (rec.shares || 0) * 1000;
+
+            if (rec.type === 'buy') {
+              invMap[symbol] = (invMap[symbol] || 0) + sharesCount;
+            } else if (rec.type === 'sell') {
+              invMap[symbol] = Math.max(0, (invMap[symbol] || 0) - sharesCount);
+            }
+          }
+
+          const result = [];
+          for (const symbol in invMap) {
+            if (invMap[symbol] > 0) {
+              result.push({
+                symbol: symbol,
+                shares: invMap[symbol] / 1000
+              });
+            }
+          }
+          return result;
+        });
+
         // 分頁後的歷史交易
         const totalPages = computed(() => Math.ceil(filteredRecords.value.length / pageSize.value) || 1);
         
@@ -717,6 +836,11 @@
           const start = (currentPage.value - 1) * pageSize.value;
           const end = start + pageSize.value;
           return filteredRecords.value.slice(start, end);
+        });
+
+        // 當股票代碼欄位變動時，即時驗證
+        watch(() => form.value.symbol, () => {
+          validateSymbolInput();
         });
 
         // 當篩選條件或搜尋改變時，重設分頁至第一頁
@@ -897,33 +1021,53 @@
             return;
           }
 
+          // 1. 股票代號與名稱格式驗證
+          if (!isValidSymbolFormat(form.value.symbol)) {
+            symbolError.value = '格式須為「代號 名稱」，例如：2330 台積電';
+            showToast('股票輸入格式錯誤，請修正', 'error');
+            return;
+          }
+
+          const recordData = {
+            date: form.value.date,
+            type: form.value.type,
+            symbol: form.value.symbol.trim(),
+            price: parseFloat(form.value.price),
+            shares: parseFloat(form.value.shares),
+            discount: parseFloat(form.value.discount),
+            note: form.value.note.trim()
+          };
+
+          // 2. 模擬完整交易，確保無超賣
+          let tempRecords = [];
           if (form.value.id) {
             // 編輯模式
+            tempRecords = records.value.map(r => r.id === form.value.id ? { ...r, ...recordData } : r);
+          } else {
+            // 新增模式
+            tempRecords = [...records.value, { ...recordData, id: 'temp_check' }];
+          }
+
+          const checkResult = checkInventoryLegitimacy(tempRecords);
+          if (!checkResult.valid) {
+            showToast(checkResult.message, 'error');
+            return;
+          }
+
+          // 3. 通過驗證，儲存資料
+          if (form.value.id) {
             const index = records.value.findIndex(r => r.id === form.value.id);
             if (index !== -1) {
               records.value[index] = {
                 ...records.value[index],
-                date: form.value.date,
-                type: form.value.type,
-                symbol: form.value.symbol.trim(),
-                price: parseFloat(form.value.price),
-                shares: parseFloat(form.value.shares),
-                discount: parseFloat(form.value.discount),
-                note: form.value.note.trim()
+                ...recordData
               };
               showToast('交易紀錄已成功修改');
             }
           } else {
-            // 新增模式
             const newRecord = {
               id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-              date: form.value.date,
-              type: form.value.type,
-              symbol: form.value.symbol.trim(),
-              price: parseFloat(form.value.price),
-              shares: parseFloat(form.value.shares),
-              discount: parseFloat(form.value.discount),
-              note: form.value.note.trim()
+              ...recordData
             };
             records.value.push(newRecord);
             showToast('已成功新增一筆交易紀錄');
@@ -950,7 +1094,15 @@
 
         const deleteRecord = (id) => {
           if (confirm('確定要刪除此筆交易紀錄嗎？這將會影響後續加權成本計算。')) {
-            records.value = records.value.filter(r => r.id !== id);
+            // 檢查刪除該紀錄後，是否會引發後續的「超賣」
+            const tempRecords = records.value.filter(r => r.id !== id);
+            const checkResult = checkInventoryLegitimacy(tempRecords);
+            if (!checkResult.valid) {
+              showToast(`無法刪除：此動作將會導致後續交易產生超賣。${checkResult.message}`, 'error');
+              return;
+            }
+
+            records.value = tempRecords;
             showToast('已刪除該筆交易紀錄', 'info');
             saveToLocalStorage();
             
@@ -969,7 +1121,7 @@
             symbol: '',
             price: null,
             shares: 1,
-            discount: 0.6,
+            discount: 1.0,
             note: ''
           };
         };
@@ -1001,17 +1153,51 @@
         };
 
         const exportData = () => {
-          const dataStr = JSON.stringify(records.value, null, 2);
-          const blob = new Blob([dataStr], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `台股盈絀管制系統備份_${new Date().toISOString().substring(0, 10)}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          showToast('備份檔案已成功下載');
+          if (records.value.length === 0) {
+            showToast('暫無交易紀錄可供匯出', 'error');
+            return;
+          }
+
+          // 格式化資料以供 Excel 呈現
+          // 使用 processedRecords 可以匯出包含折讓後手續費、稅額以及單筆盈絀的詳細試算結果
+          const excelData = [...processedRecords.value].reverse().map(rec => {
+            const typeMapping = { buy: '買入', sell: '賣出', dividend: '配息' };
+            return {
+              '交易日期': rec.date,
+              '股票代號與名稱': rec.symbol,
+              '交易類型': typeMapping[rec.type] || rec.type,
+              '每股單價/配息 (元)': rec.price,
+              '張數': rec.shares,
+              '股數': rec.shares * 1000,
+              '折讓後手續費 (元)': rec.type === 'dividend' ? 0 : rec.fee,
+              '證交稅 (元)': rec.type === 'sell' ? rec.tax : 0,
+              '收支總額 (元)': rec.totalAmount,
+              '單筆已實現損益 (元)': rec.type === 'buy' ? '-' : rec.profit,
+              '備註': rec.note || ''
+            };
+          });
+
+          // 創建 Workbook
+          const worksheet = XLSX.utils.json_to_sheet(excelData);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, worksheet, "交易明細紀錄");
+
+          // 自動調整欄寬
+          const maxLens = {};
+          excelData.forEach(row => {
+            Object.keys(row).forEach(key => {
+              const valStr = String(row[key]);
+              const keyLen = key.length * 2; // 中文字元估算
+              const valLen = valStr.length;
+              maxLens[key] = Math.max(maxLens[key] || keyLen, valLen);
+            });
+          });
+          worksheet['!cols'] = Object.keys(maxLens).map(key => ({ wch: Math.min(30, maxLens[key] + 3) }));
+
+          // 寫入並下載
+          const today = new Date().toISOString().substring(0, 10);
+          XLSX.writeFile(workbook, `台股交易紀錄報表_${today}.xlsx`);
+          showToast('Excel 資料已成功下載');
         };
 
         const importData = (event) => {
@@ -1025,14 +1211,32 @@
               if (Array.isArray(imported)) {
                 // 基礎結構驗證
                 const isValid = imported.every(r => r.date && r.type && r.symbol && typeof r.price === 'number' && typeof r.shares === 'number');
-                if (isValid) {
-                  records.value = imported;
-                  saveToLocalStorage();
-                  showToast('資料還原匯入成功！');
-                  currentPage.value = 1;
-                } else {
+                if (!isValid) {
                   showToast('檔案內容格式不正確，匯入失敗', 'error');
+                  event.target.value = '';
+                  return;
                 }
+
+                // 檢查股票代碼格式
+                const hasFormatError = imported.some(r => !isValidSymbolFormat(r.symbol));
+                if (hasFormatError) {
+                  showToast('匯入失敗：有交易記錄的股票代碼格式不符「代碼 名稱」規範。', 'error');
+                  event.target.value = '';
+                  return;
+                }
+
+                // 檢查是否有超賣情況
+                const checkResult = checkInventoryLegitimacy(imported);
+                if (!checkResult.valid) {
+                  showToast(`匯入失敗：${checkResult.message}`, 'error');
+                  event.target.value = '';
+                  return;
+                }
+
+                records.value = imported;
+                saveToLocalStorage();
+                showToast('資料還原匯入成功！');
+                currentPage.value = 1;
               } else {
                 showToast('匯入失敗：非交易紀錄陣列格式', 'error');
               }
@@ -1151,19 +1355,16 @@
         // --- Lifecycle Hooks ---
         onMounted(() => {
           loadFromLocalStorage();
-          // 如果沒有資料，先預設載入範例資料，提供優良的第一眼視覺體驗
-          if (records.value.length === 0) {
-            loadDemoData();
-          } else {
-            nextTick(() => {
-              updateChart();
-            });
-          }
+          nextTick(() => {
+            updateChart();
+          });
         });
 
         return {
           records,
           toasts,
+          symbolError,
+          currentInventory,
           reportType,
           searchQuery,
           filterType,
