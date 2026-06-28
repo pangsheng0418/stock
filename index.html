@@ -657,7 +657,13 @@
           let fee = 0;
           if (type === 'buy' || type === 'sell') {
             const rawFee = p * shares * 0.001425;
-            fee = Math.max(20, Math.ceil(rawFee * discount));
+            const discountFee = Math.ceil(rawFee * discount);
+            // 當張數小於 1 的零股買賣，不受手續費最低 20 元限制，直接按折讓折扣計算
+            if (sharesVal < 1) {
+              fee = discountFee;
+            } else {
+              fee = Math.max(20, discountFee);
+            }
           }
           
           let tax = 0;
